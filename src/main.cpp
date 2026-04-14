@@ -1,55 +1,58 @@
+#define F_CPU 8000000L // Clock Speed
+#define BAUD 38400
+#define MYUBRR F_CPU/16/BAUD-1
+
 #include <avr/io.h>
 #include <util/delay.h>
- 
+
+// !!! ON PROTEUS SIMULATOR, UART WORKS ONLY WITH 1 STOP BIT!
+
+void USART_Init( unsigned int ubrr)
+{
+  /*Set baud rate */
+  UBRR0H = (unsigned char)(ubrr>>8);
+  UBRR0L = (unsigned char)ubrr;
+
+
+  UCSR0B = (1<<RXEN0)|(1<<TXEN0);
+  /* Set frame format: 8data, 1stop bit */
+  UCSR0C = (3<<UCSZ00);
+
+}
+
+void USART_Transmit( unsigned char data )
+{
+/* Wait for empty transmit buffer */
+  while ( !( UCSR0A & (1<<UDRE0)) )
+  ;
+  /* Put data into buffer, sends the data */
+  UDR0 = data;
+}
+
+unsigned char USART_Receive( void )
+{
+/* Wait for data to be received */
+  while ( !(UCSR0A & (1<<RXC0)) )
+  ;
+  /* Get and return received data from buffer */
+  return UDR0;
+}
+
 int main() {
 
-  // make it so it toggles on button press
+  USART_Init(MYUBRR);
 
-  // set the button as input
-  DDRB &= ~(1 << PB2);
+  unsigned char data = 'a';
 
-  // activate the pull up resistance
-  PORTB |= (1 << PB2);
+  USART_Transmit(data);
 
-	// green LED
-	DDRD |= (1 << PD7);
-
-  // activate red LED
-  DDRB |= (1 << PB3);
-  PORTB |= (1 << PB3);
- 
-  int toggle_semaphore = 0;
-	while(1) {
-
-    // check that the button was pressed
-    // which means that the value on PB2 is 0 (the button connects the pin to the ground)
-    if (! (PINB & (1 << PB2))) {
-      // activate the semaphore
-      toggle_semaphore = 1;
-      _delay_ms(200);
-    }
-
-    if (toggle_semaphore) {
-      // activate green LED to get yellow
-      PORTD = (1 << PD7);
-      _delay_ms(1000);
+  while(1) {
+      // Wait for a character from the user (Proteus Keyboard)
+      unsigned char received = USART_Receive();
       
-      // deactivate red LED
-      PORTB &= ~(1 << PB3);
-      _delay_ms(5000);
+      // Send it back so you can see it on the screen (Echo)
+      USART_Transmit(received);
+  }
 
-      // deactivate green LED
-      PORTD &= ~(1 << PD7);
-      _delay_ms(1000);
-
-      // reactivate red LED
-      PORTB |= (1 << PB3);
-      
-      // deactivate semaphore
-      toggle_semaphore = 0;
-    }
-
-	}
- 
-	return 0;
+  return 0;
 }
