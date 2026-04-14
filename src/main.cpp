@@ -11,23 +11,42 @@ int main() {
   // activate the pull up resistance
   PORTB |= (1 << PB2);
 
-	/* Setăm pinul 7 al portului D ca pin de ieșire. */
+	// green LED
 	DDRD |= (1 << PD7);
+
+  // activate red LED
+  DDRB |= (1 << PB3);
+  PORTB |= (1 << PB3);
  
-  int led_is_blinking = 0;
+  int toggle_semaphore = 0;
 	while(1) {
 
     // check that the button was pressed
     // which means that the value on PB2 is 0 (the button connects the pin to the ground)
     if (! (PINB & (1 << PB2))) {
-      // toggle the led_is_blinking
-      led_is_blinking = led_is_blinking ^ 1;
-      _delay_ms(500);
+      // activate the semaphore
+      toggle_semaphore = 1;
+      _delay_ms(200);
     }
-    
-    if (led_is_blinking) {
-      PORTD ^= (1 << PD7);
-      _delay_ms(500);    
+
+    if (toggle_semaphore) {
+      // activate green LED to get yellow
+      PORTD = (1 << PD7);
+      _delay_ms(1000);
+      
+      // deactivate red LED
+      PORTB &= ~(1 << PB3);
+      _delay_ms(5000);
+
+      // deactivate green LED
+      PORTD &= ~(1 << PD7);
+      _delay_ms(1000);
+
+      // reactivate red LED
+      PORTB |= (1 << PB3);
+      
+      // deactivate semaphore
+      toggle_semaphore = 0;
     }
 
 	}
