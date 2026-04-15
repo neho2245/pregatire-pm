@@ -4,15 +4,10 @@
 
 #include <avr/io.h>
 #include <util/delay.h>
+#include <avr/interrupt.h>
+#include <stdio.h>
 
 // !!! ON PROTEUS SIMULATOR, UART WORKS ONLY WITH 1 STOP BIT!
-
-enum {
-  on,
-  off,
-  red,
-  blink
-};
 
 void USART_Init( unsigned int ubrr)
 {
@@ -52,75 +47,51 @@ void USART_Send_String (const char* data) {
   }
 }
 
-void LED_Init() {
-  DDRD |= (1 << PD7);
-  DDRD |= (1 << PD5);
-  DDRB |= (1 << PB3); 
+void init_timer0() {
+  // set it to clear on compare match
+  TCCR0A |= (1 << COM0A1);
+
+  // set prescaler
+  TCCR0B |= (1 << CS00);
+  TCCR0B |= (1 << CS01);
+
+  // enable interrupts on channel A (we can have different values on channel A and B)
+  TIMSK0 |= (1 << OCIE0A);
+
+  // set overflow value
+  OCR0A = 125;
+}
+
+volatile int uptime_ms = 0;
+volatile char print_time = 0;
+volatile int last_time = 0;
+
+ISR(TIMER0_COMPA_vect) {
+  uptime_ms += 1;
+  if (uptime_ms - last_time > 249) {
+    last_time = uptime_ms;
+    print_time = 1;
+  }
 }
 
 int main() {
-
-  // initialize usart parameters
   USART_Init(MYUBRR);
-  LED_Init();
-  
+
   USART_Send_String("hello!");
 
+  // enable interrupts
+  sei();
+
+  // enable timer0
+  init_timer0();
+
   while (1) {
-  unsigned char command = USART_Receive();
-  // USART_Transmit(command);
-  // USART_Transmit(command);
-
-  switch (command - '0') {
-    case on:
-      USART_Transmit(command);
-      PORTD |= (1 << PD7);
-      PORTD |= (1 << PD5);
-      PORTB |= (1 << PB3);
-      break;
-    
-    case off:
-      PORTD &= ~(1 << PD7);
-      PORTD &= ~(1 << PD5);
-      PORTB &= ~(1 << PB3);    
-      break;
-    
-    case red:
-      PORTD &= ~(1 << PD7);
-      PORTD &= ~(1 << PD5);
-      PORTB |= (1 << PB3);
-      break;
-    
-    case blink:
-      char led_status[3];
-      led_status[0] = PINB & (1 << PB3); // red
-      led_status[1] = PIND & (1 << PD7); // green
-      led_status[2] = PIND & (1 << PD5); // blue
-
-      for (int j = 0; j < 5; j++) {
-        for (int i = 0; i < 3; i++) {
-          if (led_status[i]) {
-            switch (i) {
-              case 0:
-                PORTB ^= (1 << PB3);
-                break;
-              case 1:
-                PORTD ^= (1 << PD7);
-                break;
-              case 2: 
-                PORTD ^= (1 << PD5);
-                break;
-              default:
-                break;
-            }
-          }
-        }
-        _delay_ms(500);
-      }
-      break;
-    default:
-      break;
-  }
+    if (print_time) {
+      char message[50];
+      sprintf(message, "Time is: %d", uptime_ms);
+      USART_Send_String(message);
+      print_time = 0;
+    }
   }
 
   return 0;
