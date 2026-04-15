@@ -48,8 +48,9 @@ void USART_Send_String (const char* data) {
 }
 
 void init_timer0() {
-  // set it to clear on compare match
-  TCCR0A |= (1 << COM0A1);
+
+  // set it to clear on compare match (CTC mode)
+  TCCR0A |= (1 << WGM01);
 
   // set prescaler
   TCCR0B |= (1 << CS00);
@@ -58,14 +59,13 @@ void init_timer0() {
   // enable interrupts on channel A (we can have different values on channel A and B)
   TIMSK0 |= (1 << OCIE0A);
 
-  // set overflow value
-  OCR0A = 125;
+  // set overflow value (125 - 1, because the timer is 0 indexed)
+  OCR0A = 124;
 }
 
 volatile int uptime_ms = 0;
 volatile char print_time = 0;
 volatile int last_time = 0;
-
 ISR(TIMER0_COMPA_vect) {
   uptime_ms += 1;
   // set it to one less second, because this will trigger when the difference is 1000
@@ -89,18 +89,26 @@ void init_button() {
   PCMSK1 |= (1 << PCINT10);
 }
 
+void init_led() {
+  // set PB3 as output
+  DDRD |= (1 << PD5);
+  DDRB |= (1 << PB3);
+}
+
 volatile char button_pressed = 0;
 volatile char press_time = 0;
 ISR(PCINT1_vect) {
-
   // the interrupt trigger on the whole PCINT[14:8] so we need to check which pin actually generated the interrupt
-  // this check that the pin is 0 (which means the button made the connection to ground)
+  // this check that the pin is 0 (which means the button made the connection to ground) - this only triggers once
   // there is a 50ms delay
   if (! (PINB & (1 << PB2))) {
+    PORTB |= (1 << PB3);
     if (uptime_ms - press_time > 49) {
       button_pressed = 1;
       press_time = uptime_ms;
     }
+  } else {
+    PORTB &= ~(1 << PB3);
   }
 }
 
@@ -117,6 +125,9 @@ int main() {
 
   // enable button interrupt
   init_button();
+
+  // enable LED
+  init_led();
 
   while (1) {
     if (print_time) {
