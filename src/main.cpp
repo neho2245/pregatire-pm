@@ -7,6 +7,13 @@
 
 // !!! ON PROTEUS SIMULATOR, UART WORKS ONLY WITH 1 STOP BIT!
 
+enum {
+  on,
+  off,
+  red,
+  blink
+};
+
 void USART_Init( unsigned int ubrr)
 {
   /*Set baud rate */
@@ -38,20 +45,82 @@ unsigned char USART_Receive( void )
   return UDR0;
 }
 
+void USART_Send_String (const char* data) {
+  while (*data != '\0') {
+    USART_Transmit(*data);
+    data++;
+  }
+}
+
+void LED_Init() {
+  DDRD |= (1 << PD7);
+  DDRD |= (1 << PD5);
+  DDRB |= (1 << PB3); 
+}
+
 int main() {
 
+  // initialize usart parameters
   USART_Init(MYUBRR);
+  LED_Init();
+  
+  USART_Send_String("hello!");
 
-  unsigned char data = 'a';
+  while (1) {
+  unsigned char command = USART_Receive();
+  // USART_Transmit(command);
+  // USART_Transmit(command);
 
-  USART_Transmit(data);
+  switch (command - '0') {
+    case on:
+      USART_Transmit(command);
+      PORTD |= (1 << PD7);
+      PORTD |= (1 << PD5);
+      PORTB |= (1 << PB3);
+      break;
+    
+    case off:
+      PORTD &= ~(1 << PD7);
+      PORTD &= ~(1 << PD5);
+      PORTB &= ~(1 << PB3);    
+      break;
+    
+    case red:
+      PORTD &= ~(1 << PD7);
+      PORTD &= ~(1 << PD5);
+      PORTB |= (1 << PB3);
+      break;
+    
+    case blink:
+      char led_status[3];
+      led_status[0] = PINB & (1 << PB3); // red
+      led_status[1] = PIND & (1 << PD7); // green
+      led_status[2] = PIND & (1 << PD5); // blue
 
-  while(1) {
-      // Wait for a character from the user (Proteus Keyboard)
-      unsigned char received = USART_Receive();
-      
-      // Send it back so you can see it on the screen (Echo)
-      USART_Transmit(received);
+      for (int j = 0; j < 5; j++) {
+        for (int i = 0; i < 3; i++) {
+          if (led_status[i]) {
+            switch (i) {
+              case 0:
+                PORTB ^= (1 << PB3);
+                break;
+              case 1:
+                PORTD ^= (1 << PD7);
+                break;
+              case 2: 
+                PORTD ^= (1 << PD5);
+                break;
+              default:
+                break;
+            }
+          }
+        }
+        _delay_ms(500);
+      }
+      break;
+    default:
+      break;
+  }
   }
 
   return 0;
