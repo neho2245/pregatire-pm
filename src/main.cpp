@@ -68,9 +68,39 @@ volatile int last_time = 0;
 
 ISR(TIMER0_COMPA_vect) {
   uptime_ms += 1;
-  if (uptime_ms - last_time > 249) {
+  // set it to one less second, because this will trigger when the difference is 1000
+  if (uptime_ms - last_time > 999) {
     last_time = uptime_ms;
     print_time = 1;
+  }
+}
+
+void init_button() {
+  // initialize button
+  // activate pull-up resistance
+  PORTB |= (1 << PB2);
+
+  // enable PCINT[14:8] (this enable the interrupt on the whole vector)
+  PCICR |= (1 << PCIE1);
+  
+  // enable interrupt on the corresponding pin (and this enables the interrupt to trigger on the specific pin)
+  // in this case button 2 (which is connected on PCINT10)
+  // we need both PCICR and PCMSK in order for the button to work
+  PCMSK1 |= (1 << PCINT10);
+}
+
+volatile char button_pressed = 0;
+volatile char press_time = 0;
+ISR(PCINT1_vect) {
+
+  // the interrupt trigger on the whole PCINT[14:8] so we need to check which pin actually generated the interrupt
+  // this check that the pin is 0 (which means the button made the connection to ground)
+  // there is a 50ms delay
+  if (! (PINB & (1 << PB2))) {
+    if (uptime_ms - press_time > 49) {
+      button_pressed = 1;
+      press_time = uptime_ms;
+    }
   }
 }
 
@@ -85,12 +115,20 @@ int main() {
   // enable timer0
   init_timer0();
 
+  // enable button interrupt
+  init_button();
+
   while (1) {
     if (print_time) {
       char message[50];
-      sprintf(message, "Time is: %d", uptime_ms);
+      sprintf(message, "Time is: %d\n", uptime_ms);
       USART_Send_String(message);
       print_time = 0;
+    }
+
+    if (button_pressed) {
+      USART_Send_String("Button pressed!\n");
+      button_pressed = 0;
     }
   }
 
