@@ -61,6 +61,15 @@ void timer1_init() {
 
   // !!! enable interrupt
   TIMSK1 |= (1 << OCIE1A);
+
+  // enable interrupts on timer B as well
+  TIMSK1 |= (1 << OCIE1B);
+
+  // it works like this:
+  // the counter starts counting, it gets to OCR1B and triggers and interrupt
+  // then, it goes to OCR1A and trigger another interrupt
+  // this way, the LED is off betweeen OCR1B and OCR1A (on -> OCR1B -> off -> OCR1A -> on ...)
+  OCR1B = 500;
 }
 
 volatile int systicks = 0;
@@ -72,6 +81,13 @@ ISR(TIMER1_COMPA_vect) {
     last_ping = systicks;
     print_time = 1;
   }
+
+  // also activate the blue LED on CTC
+  PORTD |= (1 << PD5);
+}
+
+ISR(TIMER1_COMPB_vect) {
+  PORTD &= ~(1 << PD5);
 }
 
 // fast PWM mode
@@ -84,14 +100,21 @@ void timer0_init() {
   TCCR0B |= (1 << CS01);
   TCCR0B |= (1 << CS00);
 
-  // set inverting mode
+  // set NON inverting mode
   // OC0A is the pin (set on CTC and clear at bottom)
-  TCCR0A |= (1 << COM0A0);
+  // TCCR0A |= (1 << COM0A0);
   TCCR0A |= (1 << COM0A1);
+
+  // set OCR0A to 0 initially
+  OCR0A = 0;
 }
 
 void led_init() {
+  // activate red LED
   DDRB |= (1 << PB3);
+
+  // activate blue LED
+  DDRD |= (1 << PD5);
 }
 
 void button_init() {
@@ -131,6 +154,10 @@ int main() {
   // init button
   button_init();
 
+  // set OCR0A value range
+  int button_presses = 0;
+  unsigned char led_values[5] = {0, 64, 128, 192, 255};
+
   // enable interrupts
   sei();
 
@@ -145,10 +172,9 @@ int main() {
     if (button_pressed) {
       USART_Send_String("Button pressed!");
       button_pressed = 0;
+      button_presses++;
+      OCR0A = led_values[button_presses % 5];
     }
-
-    // set mode
-    OCR0A = ((systicks % ANIMATION_TIME) / 11.75);
   }
 
   return 0;
