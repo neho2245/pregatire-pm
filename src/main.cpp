@@ -1,6 +1,7 @@
 #define F_CPU 8000000L // Clock Speed
 #define BAUD 38400
 #define MYUBRR F_CPU/16/BAUD-1
+#define ANIMATION_TIME 3000
 
 #include <avr/io.h>
 #include <util/delay.h>
@@ -47,100 +48,107 @@ void USART_Send_String (const char* data) {
   }
 }
 
-void init_timer0() {
+// this counts systicks
+void timer1_init() {
+  // put timer1 on CTC mode
+  TCCR1B |= (1 << WGM12);
+  
+  // set prescaler to 8
+  TCCR1B |= (1 << CS11);
 
-  // set it to clear on compare match (CTC mode)
-  TCCR0A |= (1 << WGM01);
+  // set OCR1A to 1000 (this counts 1ms)
+  OCR1A = 1000;
 
-  // set prescaler
-  TCCR0B |= (1 << CS00);
-  TCCR0B |= (1 << CS01);
-
-  // enable interrupts on channel A (we can have different values on channel A and B)
-  TIMSK0 |= (1 << OCIE0A);
-
-  // set overflow value (125 - 1, because the timer is 0 indexed)
-  OCR0A = 124;
+  // !!! enable interrupt
+  TIMSK1 |= (1 << OCIE1A);
 }
 
-volatile int uptime_ms = 0;
-volatile char print_time = 0;
-volatile int last_time = 0;
-ISR(TIMER0_COMPA_vect) {
-  uptime_ms += 1;
-  // set it to one less second, because this will trigger when the difference is 1000
-  if (uptime_ms - last_time > 999) {
-    last_time = uptime_ms;
+volatile int systicks = 0;
+volatile int last_ping = 0;
+volatile int print_time = 0;
+ISR(TIMER1_COMPA_vect) {
+  systicks++;
+  if (systicks - last_ping > 999) {
+    last_ping = systicks;
     print_time = 1;
   }
 }
 
-void init_button() {
-  // initialize button
-  // activate pull-up resistance
-  PORTB |= (1 << PB2);
+// fast PWM mode
+void timer0_init() {
+  // set fast PWM with reset toggle on OCRA but reset on 0xFF
+  TCCR0A |= (1 << WGM01);
+  TCCR0A |= (1 << WGM00);
 
-  // enable PCINT[14:8] (this enable the interrupt on the whole vector)
-  PCICR |= (1 << PCIE1);
-  
-  // enable interrupt on the corresponding pin (and this enables the interrupt to trigger on the specific pin)
-  // in this case button 2 (which is connected on PCINT10)
-  // we need both PCICR and PCMSK in order for the button to work
-  PCMSK1 |= (1 << PCINT10);
+  // set prescaler to 64
+  TCCR0B |= (1 << CS01);
+  TCCR0B |= (1 << CS00);
+
+  // set inverting mode
+  // OC0A is the pin (set on CTC and clear at bottom)
+  TCCR0A |= (1 << COM0A0);
+  TCCR0A |= (1 << COM0A1);
 }
 
-void init_led() {
-  // set PB3 as output
-  DDRD |= (1 << PD5);
+void led_init() {
   DDRB |= (1 << PB3);
 }
 
-volatile char button_pressed = 0;
-volatile char press_time = 0;
-ISR(PCINT1_vect) {
-  // the interrupt trigger on the whole PCINT[14:8] so we need to check which pin actually generated the interrupt
-  // this check that the pin is 0 (which means the button made the connection to ground) - this only triggers once
-  // there is a 50ms delay
-  if (! (PINB & (1 << PB2))) {
-    PORTB |= (1 << PB3);
-    if (uptime_ms - press_time > 49) {
-      button_pressed = 1;
-      press_time = uptime_ms;
-    }
-  } else {
-    PORTB &= ~(1 << PB3);
+void button_init() {
+  // activate pull-up resistance
+  PORTB |= (1 << PB2);
+
+  // activate interrupts (set it to trigger on falling edge for INT2)
+  EICRA |= (1 << ISC21);
+
+  // activate INT2
+  EIMSK |= (1 << INT2);
+}
+
+volatile int button_pressed = 0;
+volatile int last_button_press = 0;
+ISR(INT2_vect) {
+  if (systicks - last_button_press > 49) {
+    button_pressed = 1;
   }
 }
+
 
 int main() {
   USART_Init(MYUBRR);
 
   USART_Send_String("hello!");
 
+  // init timer 1
+  timer1_init();
+
+  // init timer 0
+  timer0_init();
+
+  // init led
+  led_init();
+
+  // init button
+  button_init();
+
   // enable interrupts
   sei();
 
-  // enable timer0
-  init_timer0();
-
-  // enable button interrupt
-  init_button();
-
-  // enable LED
-  init_led();
-
   while (1) {
     if (print_time) {
-      char message[50];
-      sprintf(message, "Time is: %d\n", uptime_ms);
-      USART_Send_String(message);
+      char msg[50];
+      sprintf(msg, "Time is %d\n", OCR0A);
+      USART_Send_String(msg);
       print_time = 0;
     }
 
     if (button_pressed) {
-      USART_Send_String("Button pressed!\n");
+      USART_Send_String("Button pressed!");
       button_pressed = 0;
     }
+
+    // set mode
+    OCR0A = ((systicks % ANIMATION_TIME) / 11.75);
   }
 
   return 0;
